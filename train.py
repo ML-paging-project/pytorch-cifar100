@@ -11,6 +11,7 @@ import sys
 import argparse
 import time
 from datetime import datetime
+import random
 
 import numpy as np
 import torch
@@ -26,7 +27,7 @@ from conf import settings
 from utils import get_network, get_training_dataloader, get_test_dataloader, WarmUpLR, \
     most_recent_folder, most_recent_weights, last_epoch, best_acc_weights
 
-def train(epoch):
+def train(epoch, net_name):  # changed
 
     start = time.time()
     net.train()
@@ -51,13 +52,13 @@ def train(epoch):
             if 'bias' in name:
                 writer.add_scalar('LastLayerGradients/grad_norm2_bias', para.grad.norm(), n_iter)
 
-        print('Training Epoch: {epoch} [{trained_samples}/{total_samples}]\tLoss: {:0.4f}\tLR: {:0.6f}'.format(
+        print('Training {netname} Epoch: {epoch} [{trained_samples}/{total_samples}]\tLoss: {:0.4f}\tLR: {:0.6f}'.format(
             loss.item(),
             optimizer.param_groups[0]['lr'],
-            epoch=epoch,
+            epoch=epoch, netname=net_name,
             trained_samples=batch_index * args.b + len(images),
             total_samples=len(cifar100_training_loader.dataset)
-        ))
+        )) # changed
 
         #update training loss for each iteration
         writer.add_scalar('Train/loss', loss.item(), n_iter)
@@ -72,7 +73,7 @@ def train(epoch):
 
     finish = time.time()
 
-    print('epoch {} training time consumed: {:.2f}s'.format(epoch, finish - start))
+    print('epoch {} {} training time consumed: {:.2f}s'.format(epoch, net_name, finish - start))
 
 @torch.no_grad()
 def eval_training(epoch=0, tb=True):
@@ -146,6 +147,9 @@ if __name__ == '__main__':
         shuffle=True
     )
 
+    # changed
+    rand = str(random.randint(1000000, 9999999))
+    torch.set_num_threads(2) # changed
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
     train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES, gamma=0.2) #learning rate decay
@@ -160,7 +164,7 @@ if __name__ == '__main__':
         checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, recent_folder)
 
     else:
-        checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net, settings.TIME_NOW)
+        checkpoint_path = os.path.join(settings.CHECKPOINT_PATH, args.net+'-'+rand, settings.TIME_NOW) # changed
 
     #use tensorboard
     if not os.path.exists(settings.LOG_DIR):
@@ -208,9 +212,17 @@ if __name__ == '__main__':
         if args.resume:
             if epoch <= resume_epoch:
                 continue
-
-        train(epoch)
+        
+        # changed
+        time_begin = time.time()
+        train(epoch, args.net+'-'+rand)
         acc = eval_training(epoch)
+        time_end = time.time()
+        if epoch==1:
+            result=open('./result/'+args.net+'-'+rand+'.txt','w')
+            result.write(str(time_end-time_begin) + "\n")
+            result.close()
+        # changed end
 
         #start to save best performance model after learning rate decay to 0.01
         if epoch > settings.MILESTONES[1] and best_acc < acc:
